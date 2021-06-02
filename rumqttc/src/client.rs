@@ -2,7 +2,7 @@
 //! async eventloop.
 use crate::{ConnectionError, Event, EventLoop, MqttOptions, Request};
 
-use async_channel::{SendError, Sender};
+use async_channel::{SendError, Sender, TrySendError};
 use mqtt4bytes::*;
 use std::mem;
 use tokio::runtime;
@@ -15,6 +15,8 @@ pub enum ClientError {
     Cancel(#[from] SendError<()>),
     #[error("Failed to send mqtt requests to eventloop")]
     Request(#[from] SendError<Request>),
+    #[error("Failed to trysend mqtt requests to eventloop")]
+    TryRequest(#[from] TrySendError<Request>),
     #[error("Serialization error")]
     Mqtt4(mqtt4bytes::Error),
 }
@@ -52,6 +54,8 @@ impl AsyncClient {
     }
 
     /// Sends a MQTT Publish to the eventloop
+    /// If the channel is full, this method waits until there is space for a message.
+    /// If the channel is closed, this method returns an error.
     pub async fn publish<S, V>(
         &self,
         topic: S,
@@ -70,11 +74,42 @@ impl AsyncClient {
         Ok(())
     }
 
+    /// Sends a MQTT Publish to the eventloop
+    /// If the channel is full or closed, this method returns an error.
+    pub fn try_publish<S, V>(
+        &self,
+        topic: S,
+        qos: QoS,
+        retain: bool,
+        payload: V,
+    ) -> Result<(), ClientError>
+        where
+            S: Into<String>,
+            V: Into<Vec<u8>>,
+    {
+        let mut publish = Publish::new(topic, qos, payload);
+        publish.retain = retain;
+        let publish = Request::Publish(publish);
+        self.request_tx.try_send(publish)?;
+        Ok(())
+    }
+
     /// Sends a MQTT Subscribe to the eventloop
+    /// If the channel is full, this method waits until there is space for a message.
+    /// If the channel is closed, this method returns an error.
     pub async fn subscribe<S: Into<String>>(&self, topic: S, qos: QoS) -> Result<(), ClientError> {
         let subscribe = Subscribe::new(topic.into(), qos);
         let request = Request::Subscribe(subscribe);
         self.request_tx.send(request).await?;
+        Ok(())
+    }
+
+    /// Sends a MQTT Subscribe to the eventloop
+    /// If the channel is full or closed, this method returns an error.
+    pub fn try_subscribe<S: Into<String>>(&self, topic: S, qos: QoS) -> Result<(), ClientError> {
+        let subscribe = Subscribe::new(topic.into(), qos);
+        let request = Request::Subscribe(subscribe);
+        self.request_tx.try_send(request)?;
         Ok(())
     }
 
@@ -98,9 +133,19 @@ impl AsyncClient {
     }
 
     /// Sends a MQTT disconnect to the eventloop
+    /// If the channel is full, this method waits until there is space for a message.
+    /// If the channel is closed, this method returns an error.
     pub async fn disconnect(&self) -> Result<(), ClientError> {
         let request = Request::Disconnect;
         self.request_tx.send(request).await?;
+        Ok(())
+    }
+
+    /// Sends a MQTT disconnect to the eventloop
+    /// If the channel is full or closed, this method returns an error.
+    pub fn try_disconnect(&self) -> Result<(), ClientError> {
+        let request = Request::Disconnect;
+        self.request_tx.try_send(request)?;
         Ok(())
     }
 
