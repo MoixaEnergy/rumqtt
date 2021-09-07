@@ -1,6 +1,6 @@
 [package]
 name = "rumqttc"
-version = "0.2.0"
+version = "0.2.1"
 description = "An efficient and robust mqtt client for your connected devices"
 license = "Apache-2.0"
 repository = "https://github.com/bytebeamio/rumqtt"
@@ -17,7 +17,8 @@ bytes = "0.5"
 webpki = "0.21"
 tokio-rustls = "0.14"
 mqtt4bytes = { path = "../mqtt4bytes", version = "0.3"}
-pollster = "0.2"
+# Pollster introduce a dependecy to Rust 1.53 in v0.2.4
+pollster = "=0.2.3"
 async-channel = "1.4"
 log = "0.4"
 thiserror = "1.0.15"
